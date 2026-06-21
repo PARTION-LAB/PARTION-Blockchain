@@ -1,4 +1,4 @@
-name: backend-ci
+name: blockchain-ci
 
 on:
   pull_request:
