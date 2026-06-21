@@ -22,7 +22,6 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    environment: production
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -61,19 +60,54 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare task definition secrets
+      - name: Prepare task definition
         run: |
-          sed \
-            -e "s#__SPRING_DATASOURCE_URL_SECRET_ARN__#${SPRING_DATASOURCE_URL_SECRET_ARN}#g" \
-            -e "s#__SPRING_DATASOURCE_USERNAME_SECRET_ARN__#${SPRING_DATASOURCE_USERNAME_SECRET_ARN}#g" \
-            -e "s#__SPRING_DATASOURCE_PASSWORD_SECRET_ARN__#${SPRING_DATASOURCE_PASSWORD_SECRET_ARN}#g" \
-            -e "s#__DD_API_KEY_SECRET_ARN__#${DD_API_KEY_SECRET_ARN}#g" \
-            "${ECS_TASK_DEFINITION}" > /tmp/task-definition.json
+          ruby -rjson -e '
+            replacements = ENV.select { |key, _| key.start_with?("TASKDEF_") }
+                              .transform_keys { |key| "__#{key.delete_prefix("TASKDEF_")}__" }
+
+            replace = lambda do |value|
+              case value
+              when Hash
+                value.transform_values { |child| replace.call(child) }
+              when Array
+                value.map { |child| replace.call(child) }
+              when String
+                replacements.fetch(value, value)
+              else
+                value
+              end
+            end
+
+            task_definition = JSON.parse(File.read(ENV.fetch("ECS_TASK_DEFINITION")))
+            File.write("/tmp/task-definition.json", JSON.pretty_generate(replace.call(task_definition)))
+          '
         env:
-          SPRING_DATASOURCE_URL_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_URL_SECRET_ARN }}
-          SPRING_DATASOURCE_USERNAME_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_USERNAME_SECRET_ARN }}
-          SPRING_DATASOURCE_PASSWORD_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_PASSWORD_SECRET_ARN }}
-          DD_API_KEY_SECRET_ARN: ${{ secrets.DD_API_KEY_SECRET_ARN }}
+          TASKDEF_BLOCKCHAIN_AWS_REGION: ${{ secrets.BLOCKCHAIN_AWS_REGION }}
+          TASKDEF_BLOCKCHAIN_DD_AGENT_HOST: ${{ secrets.BLOCKCHAIN_DD_AGENT_HOST }}
+          TASKDEF_BLOCKCHAIN_DD_ENV: ${{ secrets.BLOCKCHAIN_DD_ENV }}
+          TASKDEF_BLOCKCHAIN_DD_LOGS_INJECTION: ${{ secrets.BLOCKCHAIN_DD_LOGS_INJECTION }}
+          TASKDEF_BLOCKCHAIN_DD_SERVICE: ${{ secrets.BLOCKCHAIN_DD_SERVICE }}
+          TASKDEF_BLOCKCHAIN_DD_TRACE_AGENT_PORT: ${{ secrets.BLOCKCHAIN_DD_TRACE_AGENT_PORT }}
+          TASKDEF_BLOCKCHAIN_DD_TRACE_SAMPLE_RATE: ${{ secrets.BLOCKCHAIN_DD_TRACE_SAMPLE_RATE }}
+          TASKDEF_BLOCKCHAIN_DD_VERSION: ${{ secrets.BLOCKCHAIN_DD_VERSION }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_APM_ENABLED: ${{ secrets.BLOCKCHAIN_DATADOG_DD_APM_ENABLED }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_APM_NON_LOCAL_TRAFFIC: ${{ secrets.BLOCKCHAIN_DATADOG_DD_APM_NON_LOCAL_TRAFFIC }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_DOGSTATSD_NON_LOCAL_TRAFFIC: ${{ secrets.BLOCKCHAIN_DATADOG_DD_DOGSTATSD_NON_LOCAL_TRAFFIC }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_ENV: ${{ secrets.BLOCKCHAIN_DATADOG_DD_ENV }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_LOGS_ENABLED: ${{ secrets.BLOCKCHAIN_DATADOG_DD_LOGS_ENABLED }}
+          TASKDEF_BLOCKCHAIN_DATADOG_DD_SITE: ${{ secrets.BLOCKCHAIN_DATADOG_DD_SITE }}
+          TASKDEF_BLOCKCHAIN_DATADOG_ECS_FARGATE: ${{ secrets.BLOCKCHAIN_DATADOG_ECS_FARGATE }}
+          TASKDEF_BLOCKCHAIN_EXECUTION_ROLE_ARN: ${{ secrets.BLOCKCHAIN_EXECUTION_ROLE_ARN }}
+          TASKDEF_BLOCKCHAIN_JAVA_TOOL_OPTIONS: ${{ secrets.BLOCKCHAIN_JAVA_TOOL_OPTIONS }}
+          TASKDEF_BLOCKCHAIN_KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.BLOCKCHAIN_KAFKA_BOOTSTRAP_SERVERS }}
+          TASKDEF_BLOCKCHAIN_PARTION_LEDGER_BACKFILL_ENABLED: ${{ secrets.BLOCKCHAIN_PARTION_LEDGER_BACKFILL_ENABLED }}
+          TASKDEF_BLOCKCHAIN_PARTION_LEDGER_TOPIC: ${{ secrets.BLOCKCHAIN_PARTION_LEDGER_TOPIC }}
+          TASKDEF_BLOCKCHAIN_TASK_ROLE_ARN: ${{ secrets.BLOCKCHAIN_TASK_ROLE_ARN }}
+          TASKDEF_DD_API_KEY_SECRET_ARN: ${{ secrets.DD_API_KEY_SECRET_ARN }}
+          TASKDEF_SPRING_DATASOURCE_PASSWORD_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_PASSWORD_SECRET_ARN }}
+          TASKDEF_SPRING_DATASOURCE_URL_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_URL_SECRET_ARN }}
+          TASKDEF_SPRING_DATASOURCE_USERNAME_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_USERNAME_SECRET_ARN }}
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
