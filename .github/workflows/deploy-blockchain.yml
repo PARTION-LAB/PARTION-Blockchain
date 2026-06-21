@@ -61,11 +61,25 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare task definition secrets
+        run: |
+          sed \
+            -e "s#__SPRING_DATASOURCE_URL_SECRET_ARN__#${SPRING_DATASOURCE_URL_SECRET_ARN}#g" \
+            -e "s#__SPRING_DATASOURCE_USERNAME_SECRET_ARN__#${SPRING_DATASOURCE_USERNAME_SECRET_ARN}#g" \
+            -e "s#__SPRING_DATASOURCE_PASSWORD_SECRET_ARN__#${SPRING_DATASOURCE_PASSWORD_SECRET_ARN}#g" \
+            -e "s#__DD_API_KEY_SECRET_ARN__#${DD_API_KEY_SECRET_ARN}#g" \
+            "${ECS_TASK_DEFINITION}" > /tmp/task-definition.json
+        env:
+          SPRING_DATASOURCE_URL_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_URL_SECRET_ARN }}
+          SPRING_DATASOURCE_USERNAME_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_USERNAME_SECRET_ARN }}
+          SPRING_DATASOURCE_PASSWORD_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_PASSWORD_SECRET_ARN }}
+          DD_API_KEY_SECRET_ARN: ${{ secrets.DD_API_KEY_SECRET_ARN }}
+
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          task-definition: /tmp/task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
           environment-variables: |
