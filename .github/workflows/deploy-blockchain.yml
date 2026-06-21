@@ -22,6 +22,7 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    environment: production
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -103,11 +104,22 @@ jobs:
           TASKDEF_BLOCKCHAIN_KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.BLOCKCHAIN_KAFKA_BOOTSTRAP_SERVERS }}
           TASKDEF_BLOCKCHAIN_PARTION_LEDGER_BACKFILL_ENABLED: ${{ secrets.BLOCKCHAIN_PARTION_LEDGER_BACKFILL_ENABLED }}
           TASKDEF_BLOCKCHAIN_PARTION_LEDGER_TOPIC: ${{ secrets.BLOCKCHAIN_PARTION_LEDGER_TOPIC }}
+          TASKDEF_BLOCKCHAIN_SPRING_PROFILES_ACTIVE: ${{ secrets.BLOCKCHAIN_SPRING_PROFILES_ACTIVE }}
           TASKDEF_BLOCKCHAIN_TASK_ROLE_ARN: ${{ secrets.BLOCKCHAIN_TASK_ROLE_ARN }}
           TASKDEF_DD_API_KEY_SECRET_ARN: ${{ secrets.DD_API_KEY_SECRET_ARN }}
           TASKDEF_SPRING_DATASOURCE_PASSWORD_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_PASSWORD_SECRET_ARN }}
           TASKDEF_SPRING_DATASOURCE_URL_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_URL_SECRET_ARN }}
           TASKDEF_SPRING_DATASOURCE_USERNAME_SECRET_ARN: ${{ secrets.SPRING_DATASOURCE_USERNAME_SECRET_ARN }}
+
+      - name: Validate task definition placeholders
+        run: |
+          ruby -e '
+            task_definition = File.read("/tmp/task-definition.json")
+            placeholders = task_definition.scan(/__[A-Z0-9_]+__/).uniq
+            allowed = ["__BLOCKCHAIN_IMAGE__"]
+            unresolved = placeholders - allowed
+            abort("Unresolved task definition placeholders: #{unresolved.join(", ")}") unless unresolved.empty?
+          '
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
